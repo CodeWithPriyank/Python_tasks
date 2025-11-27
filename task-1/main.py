@@ -11,12 +11,16 @@ from sqlalchemy import or_
 
 from database import engine, get_db, Base
 from models import URL
-from schemas import URLCreate, URLResponse
+from schemas import URLCreate, URLResponse, URLStats
 
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="URL Shortener API", version="1.0.0")
+app = FastAPI(
+    title="URL Shortener API",
+    description="A simple URL shortener service with analytics",
+    version="1.0.0",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,14 +48,14 @@ def get_unique_code(db: Session, max_attempts: int = 10) -> str:
     raise HTTPException(status_code=500, detail="Failed to generate unique code")
 
 
-@app.post("/shorten", response_model=URLResponse)
+@app.post("/shorten", response_model=URLResponse, tags=["URL Operations"])
 def shorten_url(url_data: URLCreate, request: Request, db: Session = Depends(get_db)):
     """
     Create a shortened URL.
     
-    - Optionally specify a custom_alias
-    - Optionally specify an expires_at datetime
-    - Avoids duplicates for the same URL (returns existing if found)
+    - **url**: The long URL to shorten (required)
+    - **custom_alias**: Optional custom alias (3-50 alphanumeric chars)
+    - **expires_at**: Optional expiration datetime
     """
     # Check for existing URL (avoid duplicates)
     existing = db.query(URL).filter(
@@ -99,12 +103,34 @@ def shorten_url(url_data: URLCreate, request: Request, db: Session = Depends(get
     )
 
 
-@app.get("/{code}")
+@app.get("/stats/{code}", response_model=URLStats, tags=["Analytics"])
+def get_url_stats(code: str, db: Session = Depends(get_db)):
+    """
+    Get statistics for a shortened URL.
+    
+    Returns redirect count, created timestamp, and last accessed timestamp.
+    """
+    url_entry = db.query(URL).filter(
+        or_(URL.short_code == code, URL.custom_alias == code)
+    ).first()
+    
+    if not url_entry:
+        raise HTTPException(status_code=404, detail="URL not found")
+    
+    return URLStats(
+        short_code=url_entry.short_code,
+        original_url=url_entry.original_url,
+        redirect_count=url_entry.redirect_count or 0,
+        created_at=url_entry.created_at,
+        last_accessed_at=url_entry.last_accessed_at
+    )
+
+
+@app.get("/{code}", tags=["URL Operations"])
 def redirect_to_url(code: str, db: Session = Depends(get_db)):
     """
     Redirect to the original URL using the short code or custom alias.
     """
-    # Look up by short_code or custom_alias
     url_entry = db.query(URL).filter(
         or_(URL.short_code == code, URL.custom_alias == code)
     ).first()
@@ -121,10 +147,14 @@ def redirect_to_url(code: str, db: Session = Depends(get_db)):
         if expires < now:
             raise HTTPException(status_code=410, detail="URL has expired")
     
+    # Update stats
+    url_entry.redirect_count = (url_entry.redirect_count or 0) + 1
+    url_entry.last_accessed_at = datetime.now(timezone.utc)
+    db.commit()
+    
     return RedirectResponse(url=url_entry.original_url, status_code=307)
 
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-

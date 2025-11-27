@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  url-shortener:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./url_shortener.db:/app/url_shortener.db
+    environment:
+      - PYTHONUNBUFFERED=1
+

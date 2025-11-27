@@ -32,6 +32,14 @@ class URLResponse(BaseModel):
     original_url: str
     expires_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
+
+class URLStats(BaseModel):
+    short_code: str
+    original_url: str
+    redirect_count: int
+    created_at: datetime
+    last_accessed_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}

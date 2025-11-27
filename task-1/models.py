@@ -12,4 +12,5 @@ class URL(Base):
     custom_alias = Column(String(50), unique=True, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True), nullable=True)
-
+    redirect_count = Column(Integer, default=0)
+    last_accessed_at = Column(DateTime(timezone=True), nullable=True)
